@@ -10,11 +10,12 @@ use move_model::options::ModelBuilderOptions;
 use move_model::{add_move_lang_diagnostics, collect_related_modules_recursive, run_spec_checker};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
+use tempfile::NamedTempFile;
 
 pub fn build_file_to_module_env(
     pre_compiled_deps: Option<&FullyCompiledProgram>,
     named_address_mapping: BTreeMap<String, NumericalAddress>,
-    deps: &[String],
+    deps: Vec<&NamedTempFile>,
     path: String,
     options: ModelBuilderOptions,
 ) -> anyhow::Result<GlobalEnv> {
@@ -38,9 +39,13 @@ pub fn build_file_to_module_env(
 
     use move_compiler::command_line::compiler::PASS_PARSER;
 
+    let mut deps_files = vec![];
+    for f in deps {
+        deps_files.push(f.path().to_str().unwrap().to_string());
+    }
     // Step 1: parse the program to get comments and a separation of targets and dependencies.
     let (files, comments_and_compiler_res) =
-        move_compiler::Compiler::from_files(vec![path], deps.to_vec(), named_address_mapping)
+        move_compiler::Compiler::from_files(vec![path], deps_files, named_address_mapping)
             .set_pre_compiled_lib_opt(pre_compiled_deps)
             .set_flags(move_compiler::Flags::empty().set_sources_shadow_deps(true))
             .run::<PASS_PARSER>()?;

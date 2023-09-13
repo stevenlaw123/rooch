@@ -144,6 +144,15 @@ impl<'a> CompiledState<'a> {
         self.modules.values().map(|pmod| &pmod.module)
     }
 
+    pub fn source_temp_files(&self) -> Vec<&NamedTempFile> {
+        let mut named_temp_files = vec![];
+        for (_, processed_module) in self.modules.iter() {
+            let (_, temp_file) = processed_module.source_file.as_ref().unwrap();
+            named_temp_files.push(temp_file);
+        }
+        named_temp_files
+    }
+
     pub fn source_files(&self) -> impl Iterator<Item = &String> {
         self.modules
             .iter()
@@ -244,7 +253,7 @@ fn filter_temp_path(input: String) -> String {
 fn compile_source_unit(
     pre_compiled_deps: Option<&FullyCompiledProgram>,
     named_address_mapping: BTreeMap<String, NumericalAddress>,
-    deps: &[String],
+    deps: Vec<&NamedTempFile>,
     path: String,
 ) -> Result<(AnnotatedCompiledUnit, Option<String>)> {
     use crate::moveos_test_model_builder::build_file_to_module_env;
@@ -252,7 +261,7 @@ fn compile_source_unit(
     let global_env = build_file_to_module_env(
         pre_compiled_deps,
         named_address_mapping.clone(),
-        deps,
+        deps.clone(),
         path.clone(),
         ModelBuilderOptions::default(),
     )
@@ -283,9 +292,13 @@ fn compile_source_unit(
         Some(String::from_utf8(error_buffer).unwrap())
     }
 
+    let mut deps_files = vec![];
+    for f in deps {
+        deps_files.push(f.path().to_str().unwrap().to_string());
+    }
     use move_compiler::PASS_COMPILATION;
     let (mut files, comments_and_compiler_res) =
-        move_compiler::Compiler::from_files(vec![path], deps.to_vec(), named_address_mapping)
+        move_compiler::Compiler::from_files(vec![path], deps_files, named_address_mapping)
             .set_pre_compiled_lib_opt(pre_compiled_deps)
             .set_flags(move_compiler::Flags::empty().set_sources_shadow_deps(true))
             .run::<PASS_COMPILATION>()?;
@@ -472,7 +485,7 @@ pub trait MoveOSTestAdapter<'a>: Sized {
                         let (unit, warnings_opt) = compile_source_unit(
                             state.pre_compiled_deps,
                             state.named_address_mapping.clone(),
-                            &state.source_files().cloned().collect::<Vec<_>>(),
+                            state.source_temp_files(),
                             data_path.to_owned(),
                         )?;
                         let (named_addr_opt, module) = match unit {
@@ -541,7 +554,7 @@ pub trait MoveOSTestAdapter<'a>: Sized {
                         let (unit, warning_opt) = compile_source_unit(
                             state.pre_compiled_deps,
                             state.named_address_mapping.clone(),
-                            &state.source_files().cloned().collect::<Vec<_>>(),
+                            state.source_temp_files(),
                             data_path.to_owned(),
                         )?;
                         match unit {
